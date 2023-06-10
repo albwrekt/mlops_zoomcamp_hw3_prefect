@@ -8,6 +8,7 @@ from sklearn.feature_extraction import DictVectorizer
 from sklearn.metrics import mean_squared_error
 import mlflow
 import xgboost as xgb
+# Flows and task within flow
 from prefect import flow, task
 from prefect.deployments import Deployment
 
@@ -133,5 +134,5 @@ def main_flow(
 
 # Main program run
 if __name__ == "__main__":
-    # Deploy the flow using the Deployment class
-
+    # Run code
+    main_flow()
