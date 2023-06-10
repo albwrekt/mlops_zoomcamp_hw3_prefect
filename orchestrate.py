@@ -12,7 +12,6 @@ import xgboost as xgb
 from prefect import flow, task
 from prefect.deployments import Deployment
 
-
 @task(retries=3, retry_delay_seconds=2)
 def read_data(filename: str) -> pd.DataFrame:
     """Read data into DataFrame"""
@@ -134,5 +133,5 @@ def main_flow(
 
 # Main program run
 if __name__ == "__main__":
-    # Run code
-    main_flow()
+    # RUn code
+    main_flow() 
