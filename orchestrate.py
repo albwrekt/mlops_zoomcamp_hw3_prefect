@@ -11,6 +11,8 @@ import xgboost as xgb
 # Flows and task within flow
 from prefect import flow, task
 from prefect.deployments import Deployment
+from prefect.artifacts import create_markdown_artifact
+from prefect_email import EmailServerCredentials, email_send_message
 
 @task(retries=3, retry_delay_seconds=2)
 def read_data(filename: str) -> pd.DataFrame:
@@ -70,9 +72,9 @@ def train_best_model(
     y_train: np.ndarray,
     y_val: np.ndarray,
     dv: sklearn.feature_extraction.DictVectorizer,
-) -> None:
+) -> float:
     """train a model with best hyperparams and write everything out"""
-
+    rmse = None
     with mlflow.start_run():
         train = xgb.DMatrix(X_train, label=y_train)
         valid = xgb.DMatrix(X_val, label=y_val)
@@ -101,14 +103,43 @@ def train_best_model(
         rmse = mean_squared_error(y_val, y_pred, squared=False)
         mlflow.log_metric("rmse", rmse)
 
+        # Create a Prefect artifact containing markdown results of the training
+        test_markdown = f"""
+            # Output Validation RMSE
+            RMSE: {rmse:.2f}
+        """
+        art = create_markdown_artifact(
+            key='albrecht-test-markdown',
+            markdown=test_markdown,
+            description='This is a test artifact for the HW3 of MLOps Zoomcamp'
+        )
+
         pathlib.Path("models").mkdir(exist_ok=True)
         with open("models/preprocessor.b", "wb") as f_out:
             pickle.dump(dv, f_out)
         mlflow.log_artifact("models/preprocessor.b", artifact_path="preprocessor")
 
         mlflow.xgboost.log_model(booster, artifact_path="models_mlflow")
-    return None
+    return rmse
 
+def send_email_response(output_rmse:float, email_addresses:list):
+    """
+    Send an email with the results of the run to the runner
+    Citation for email server code examples: https://github.com/PrefectHQ/prefect-email
+    """
+    # Load the server block - this was created through the UI to preserve credentials from the UI
+    email_creds = EmailServerCredentials.load(name="email-albrecht-block")
+    # For every email address passed to the function define
+    for email_address in email_addresses:
+        # create an email message
+        subject = email_send_message.with_options(name=f"email {email_address}").submit(
+            email_server_credentials=email_creds,
+            subject="Example Flow Email Gmail",
+            msg=f"Hello,\nRun RMSE: {output_rmse}\nThanks,\nEric",
+            email_to=email_address
+        )
+        # Log
+        print(f"Email sent: {email_address}")
 
 @flow
 def main_flow(
@@ -129,7 +160,10 @@ def main_flow(
     X_train, X_val, y_train, y_val, dv = add_features(df_train, df_val)
 
     # Train
-    train_best_model(X_train, X_val, y_train, y_val, dv)
+    rmse = train_best_model(X_train, X_val, y_train, y_val, dv)
+    
+    # Email
+    send_email_response(output_rmse=rmse, email_addresses=['ealbrecht723@gmail.com'])
 
 # Main program run
 if __name__ == "__main__":
